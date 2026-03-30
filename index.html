@@ -1,6 +1,1430 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { useState, useEffect } from "react";
 
-export default defineConfig({
-  plugins: [react()],
-})
+// ── Inject Google Fonts ──────────────────────────────────────────
+if (typeof document !== "undefined" && !document.getElementById("af-gf")) {
+  const l = document.createElement("link");
+  l.id = "af-gf";
+  l.rel = "stylesheet";
+  l.href =
+    "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap";
+  document.head.appendChild(l);
+}
+
+// ── Logo ─────────────────────────────────────────────────────────
+const LOGO_IMG = "/logo.jpg";
+
+// ── Constants ────────────────────────────────────────────────────
+const TOTAL_COST = 450000;
+const HOURS_PER_SAT = 2;
+const TOTAL_HOURS = 10;
+const CPH = TOTAL_COST / TOTAL_HOURS; // $45,000/h
+
+const DEMO_MEMBERS = [
+  { id: "m1", name: "Andrés" },
+  { id: "m2", name: "Vivi" },
+  { id: "m3", name: "Carlos" },
+  { id: "m4", name: "Tati" },
+  { id: "m5", name: "Fer" },
+  { id: "m6", name: "Holman" },
+  { id: "m7", name: "Eri" },
+  { id: "m8", name: "Juan" },
+  { id: "m9", name: "Nico" },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────
+const getSats = (y, m) => {
+  const r = [],
+    d = new Date(y, m, 1);
+  while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
+  while (d.getMonth() === m) {
+    r.push(new Date(d).toISOString().split("T")[0]);
+    d.setDate(d.getDate() + 7);
+  }
+  return r;
+};
+const fmtCOP = (n) => `$${Math.round(n).toLocaleString("es-CO")}`;
+const shortDate = (s) =>
+  new Date(s + "T12:00:00").toLocaleDateString("es-CO", {
+    day: "numeric",
+    month: "short",
+  });
+const monthStr = (y, m) =>
+  new Date(y, m, 1).toLocaleDateString("es-CO", {
+    month: "long",
+    year: "numeric",
+  });
+const initials = (n) =>
+  n
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+const AVATAR_COLORS = [
+  "#734092","#1F94CC","#a0509e","#1a7ab0","#5a2878","#0d6a9e","#8a30a0","#2260a0",
+];
+const aColor = (id) => AVATAR_COLORS[id.charCodeAt(id.length - 1) % AVATAR_COLORS.length];
+
+
+
+// ── Styles ───────────────────────────────────────────────────────
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
+  .af { font-family:'DM Sans',sans-serif; background:#0d0b1a; min-height:100vh; color:#ede0f8; max-width:480px; margin:0 auto; padding-bottom:76px; }
+  .af *,.af *::before,.af *::after { box-sizing:border-box; margin:0; padding:0; }
+
+  /* ── Header ── */
+  .af-hdr { padding:18px 20px 14px; background:linear-gradient(180deg,#09071a 0%,transparent 100%); border-bottom:1px solid #1e1438; position:sticky; top:0; z-index:50; backdrop-filter:blur(10px); }
+  .af-hdr-left { display:flex; align-items:center; }
+  .af-hdr-row { display:flex; align-items:flex-start; justify-content:space-between; }
+  .af-logo { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:3px; color:#1F94CC; line-height:1; }
+  .af-logo span { color:#734092; }
+  .af-mo { font-size:12px; color:#8a6aaa; font-weight:600; text-transform:capitalize; margin-top:3px; letter-spacing:0.5px; }
+  .af-hdr-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .af-admin-btn { padding:5px 12px; border-radius:20px; border:1px solid #2e1e50; background:transparent; color:#8a6aaa; font-family:'DM Sans',sans-serif; font-size:11px; font-weight:700; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s; }
+  .af-admin-btn.on { background:#1F94CC; border-color:#1F94CC; color:#fff; }
+  .af-myid-info { font-size:11px; color:#8a6aaa; display:flex; align-items:center; gap:6px; }
+  .af-myid-change { background:none; border:none; color:#ff6b47; cursor:pointer; font-size:11px; font-family:'DM Sans',sans-serif; text-decoration:underline; }
+
+  /* ── Tab bar ── */
+  .af-tabs { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#09071a; border-top:1px solid #1e1438; display:flex; padding:6px 0 10px; z-index:100; }
+  .af-tab { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; border:none; background:none; cursor:pointer; padding:4px 0; }
+  .af-tab-ic { font-size:20px; line-height:1; }
+  .af-tab-lb { font-size:10px; font-weight:700; color:#4a2e6a; letter-spacing:0.3px; font-family:'DM Sans',sans-serif; transition:color 0.2s; }
+  .af-tab.act .af-tab-lb { color:#1F94CC; }
+  .af-tab-dot { width:4px; height:4px; border-radius:50%; background:#1F94CC; opacity:0; margin-top:1px; transition:opacity 0.2s; }
+  .af-tab.act .af-tab-dot { opacity:1; }
+
+  /* ── Layout ── */
+  .af-con { padding:20px; }
+  .af-stitle { font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:2px; color:#1F94CC; margin-bottom:16px; }
+  .af-card { background:#131020; border-radius:16px; padding:16px; margin-bottom:12px; border:1px solid #1e1438; }
+  .af-card-title { font-size:10px; font-weight:700; color:#6a4a8a; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:12px; }
+  .af-divider { height:1px; background:#1e1438; margin:12px 0; }
+  .af-empty { text-align:center; color:#6a4a8a; font-size:13px; padding:24px 0; }
+  .af-note { font-size:12px; color:#6a4a8a; line-height:1.6; }
+  .af-mb8 { margin-bottom:8px; }
+  .af-mb12 { margin-bottom:12px; }
+  .af-row { display:flex; gap:8px; align-items:stretch; }
+  .af-row > * { flex:1; }
+
+  /* ── Colors ── */
+  .af-green { color:#1F94CC; }
+  .af-orange { color:#ff6b47; }
+  .af-muted { color:#6a4a8a; }
+
+  /* ── Stats ── */
+  .af-stat-row { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid #1e1438; }
+  .af-stat-row:last-child { border-bottom:none; }
+  .af-stat-lb { font-size:13px; color:#9a7abf; }
+  .af-stat-v { font-size:15px; font-weight:700; color:#ede0f8; }
+
+  /* ── Hero ── */
+  .af-hero { background:linear-gradient(135deg,#1a1030,#0e0a1e); border-radius:20px; padding:24px 20px; text-align:center; margin-bottom:14px; border:1px solid #2a1850; }
+  .af-hero-lb { font-size:11px; color:#8a6aaa; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+  .af-hero-v { font-family:'Bebas Neue',sans-serif; font-size:52px; color:#1F94CC; letter-spacing:2px; line-height:1.1; margin:6px 0 4px; }
+  .af-hero-sub { font-size:13px; color:#8a6aaa; }
+  .af-prog { height:5px; background:#1e1438; border-radius:3px; overflow:hidden; margin-top:12px; }
+  .af-prog-f { height:100%; border-radius:3px; background:linear-gradient(90deg,#734092,#1F94CC); transition:width 0.6s ease; }
+  .af-prog-label { font-size:11px; color:#6a4a8a; margin-top:5px; }
+
+  /* ── Saturday rows ── */
+  .af-sat { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; margin-bottom:8px; border:1px solid transparent; transition:all 0.2s; }
+  .af-sat.tr { background:#1a1030; border-color:#241848; }
+  .af-sat.cp { background:#1e1018; border-color:#2e1830; }
+  .af-sat-date { font-weight:700; font-size:14px; min-width:60px; }
+  .af-badge { font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; letter-spacing:0.5px; white-space:nowrap; }
+  .af-badge.tr { background:#1F94CC18; color:#1F94CC; border:1px solid #1F94CC30; }
+  .af-badge.cp { background:#ff6b4718; color:#ff6b47; border:1px solid #ff6b4730; }
+  .af-sat-meta { margin-left:auto; font-size:12px; color:#8a6aaa; white-space:nowrap; }
+
+  /* ── Toggle ── */
+  .af-toggle { width:40px; height:22px; border-radius:11px; border:none; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0; }
+  .af-toggle::after { content:''; position:absolute; width:16px; height:16px; background:#fff; border-radius:50%; top:3px; transition:left 0.2s; }
+  .af-toggle.on { background:#1F94CC; }
+  .af-toggle.on::after { left:21px; }
+  .af-toggle.off { background:#281848; }
+  .af-toggle.off::after { left:3px; }
+
+  /* ── Avatar ── */
+  .af-av { border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; flex-shrink:0; letter-spacing:0.5px; }
+
+  /* ── Member row ── */
+  .af-mrow { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#1a1030; border-radius:12px; margin-bottom:8px; border:1px solid #241848; }
+  .af-mname { font-size:14px; font-weight:500; flex:1; }
+
+  /* ── Checks ── */
+  .af-checks { display:flex; gap:5px; margin-left:auto; }
+  .af-chk { width:32px; height:32px; border-radius:8px; border:2px solid #281848; background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; transition:all 0.15s; flex-shrink:0; }
+  .af-chk.y { background:#1F94CC; border-color:#1F94CC; color:#fff; font-weight:800; }
+  .af-chk.cp { opacity:0.25; cursor:not-allowed; border-style:dashed; }
+  .af-chk.locked { opacity:0.35; cursor:not-allowed; }
+  .af-chk.xfrd { background:#73409230; border-color:#734092; color:#734092; }
+
+  /* ── Column headers for grid ── */
+  .af-col-hdr { font-size:10px; text-align:center; font-weight:700; line-height:1.3; }
+
+  /* ── Buttons ── */
+  .af-btn { padding:12px 20px; border-radius:12px; border:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-weight:700; font-size:14px; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; width:100%; }
+  .af-btn-p { background:linear-gradient(135deg,#734092,#1F94CC); color:#fff; }
+  .af-btn-p:hover { opacity:0.9; transform:translateY(-1px); }
+  .af-btn-p:active { transform:translateY(0); }
+  .af-btn-s { background:#1a1030; color:#1F94CC; border:1px solid #2e1e50; }
+  .af-btn-d { background:#ff6b4712; color:#ff6b47; border:1px solid #ff6b4730; }
+
+  /* ── Inputs ── */
+  .af-inp { width:100%; padding:11px 14px; background:#1a1030; border:1px solid #2e1e50; border-radius:10px; color:#ede0f8; font-family:'DM Sans',sans-serif; font-size:14px; outline:none; transition:border-color 0.2s; }
+  .af-inp:focus { border-color:#1F94CC; }
+  .af-inp::placeholder { color:#4a2e6a; }
+  select.af-inp { appearance:none; cursor:pointer; }
+  input[type="date"].af-inp { color-scheme:dark; }
+
+  /* ── Costs ── */
+  .af-cost-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #1e1438; }
+  .af-cost-row:last-child { border-bottom:none; }
+  .af-cost-info { display:flex; align-items:center; gap:10px; }
+  .af-cost-v { font-size:16px; font-weight:800; color:#1F94CC; }
+  .af-cost-v.z { color:#4a2e6a; font-weight:500; }
+
+  /* ── WhatsApp ── */
+  .af-wa { background:#09071a; border:1px solid #1e1040; border-radius:12px; padding:16px; font-family:'Courier New',monospace; font-size:12px; color:#9a7abf; line-height:1.7; white-space:pre-wrap; margin-bottom:12px; max-height:300px; overflow-y:auto; }
+
+  /* ── Turn card ── */
+  .af-turn { background:linear-gradient(135deg,#1a1030,#0e0a20); border-radius:18px; padding:24px; text-align:center; border:1px solid #73409230; margin-bottom:12px; }
+  .af-turn-label { font-size:10px; color:#8a6aaa; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; }
+  .af-turn-name { font-family:'Bebas Neue',sans-serif; font-size:38px; color:#1F94CC; letter-spacing:1px; margin:8px 0 6px; line-height:1; }
+  .af-turn-sub { font-size:13px; color:#8a6aaa; }
+  .af-turn-hours { font-size:28px; font-family:'Bebas Neue',sans-serif; color:#734092; margin-top:4px; }
+
+  /* ── Profile picker ── */
+  .af-profiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .af-prof-btn { padding:10px 10px; background:#1a1030; border:1px solid #2e1e50; border-radius:12px; color:#ede0f8; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; text-align:left; transition:all 0.15s; display:flex; align-items:center; gap:8px; }
+  .af-prof-btn:hover { border-color:#734092; }
+  .af-prof-btn.sel { background:#1F94CC15; border-color:#1F94CC; color:#1F94CC; }
+
+  /* ── Transfer ── */
+  .af-xfer { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#1a1030; border-radius:10px; margin-bottom:8px; border:1px solid #241848; }
+  .af-xfer-arr { color:#1F94CC; font-size:18px; flex-shrink:0; }
+  .af-del-btn { margin-left:auto; background:none; border:none; color:#ff6b47; cursor:pointer; font-size:18px; padding:2px 6px; line-height:1; flex-shrink:0; }
+
+  /* ── Month nav ── */
+  .af-mon-nav { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .af-mon-nav-btn { background:#1a1030; border:1px solid #2e1e50; color:#1F94CC; width:36px; height:36px; border-radius:10px; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+  .af-mon-nav-btn:hover { background:#241848; }
+  .af-mon-title { flex:1; text-align:center; font-weight:700; font-size:15px; text-transform:capitalize; }
+
+  /* ── Extra sessions ── */
+  .af-sess { background:#1a1030; border-radius:12px; padding:12px 14px; margin-bottom:8px; border:1px solid #241848; }
+  .af-sess-date { font-weight:700; font-size:14px; }
+  .af-sess-meta { font-size:12px; color:#8a6aaa; margin-top:3px; line-height:1.5; }
+
+  /* ── Chip picker ── */
+  .af-att-grid { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+  .af-att-chip { padding:5px 12px; border-radius:20px; border:1px solid #2e1e50; background:transparent; color:#9a7abf; font-family:'DM Sans',sans-serif; font-size:12px; cursor:pointer; transition:all 0.15s; }
+  .af-att-chip:hover { border-color:#734092; }
+  .af-att-chip.sel { background:#1F94CC20; border-color:#1F94CC; color:#1F94CC; }
+
+  /* ── Alert ── */
+  .af-alert { padding:10px 14px; border-radius:10px; font-size:12px; line-height:1.5; margin-top:10px; }
+  .af-alert-warn { background:#ff6b4712; color:#ff6b47; border:1px solid #ff6b4730; }
+  .af-alert-ok { background:#1F94CC12; color:#1F94CC; border:1px solid #1F94CC30; }
+
+  /* ── Legend ── */
+  .af-legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
+  .af-legend-item { font-size:11px; color:#8a6aaa; display:flex; align-items:center; gap:5px; }
+`;
+
+// ── Main Component ────────────────────────────────────────────────
+export default function AgilyTeam() {
+  const now = new Date();
+  const [yr, setYr] = useState(now.getFullYear());
+  const [mo, setMo] = useState(now.getMonth());
+
+  // Core data
+  const [members, setMembers] = useState(DEMO_MEMBERS);
+  const [sats, setSats] = useState([]);
+  const [compDays, setCompDays] = useState({});
+  const [attend, setAttend] = useState({});
+  const [transfers, setTransfers] = useState([]);
+  const [extraTurnIdx, setExtraTurnIdx] = useState(0);
+  const [extraSessions, setExtraSessions] = useState([]);
+
+  // UI state
+  const [tab, setTab] = useState("inicio");
+  const [myId, setMyId] = useState(null);
+  const [adminMode, setAdminMode] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  // Transfer form
+  const [xFrom, setXFrom] = useState("");
+  const [xTo, setXTo] = useState("");
+  const [xSat, setXSat] = useState("");
+
+  // Extra session form
+  const [nsd, setNsd] = useState("");
+  const [nst, setNst] = useState("");
+  const [nsh, setNsh] = useState(1);
+  const [nsa, setNsa] = useState([]);
+  const [editingSessionId, setEditingSessionId] = useState(null);
+
+  const mk = `ag3-${yr}-${mo}`;
+
+  // ── Load from storage ─────────────────────────────────────────
+  useEffect(() => {
+    setLoaded(false);
+    (async () => {
+      try {
+        const mr = await (() => { try { const v = localStorage.getItem("ag3-members"); return v ? { value: v } : null; } catch { return null; } })();
+        if (mr?.value) setMembers(JSON.parse(mr.value));
+      } catch {}
+      try {
+        const dr = await (() => { try { const v = localStorage.getItem(mk); return v ? { value: v } : null; } catch { return null; } })();
+        if (dr?.value) {
+          const d = JSON.parse(dr.value);
+          setSats(d.sats ?? getSats(yr, mo));
+          setCompDays(d.compDays ?? {});
+          setAttend(d.attend ?? {});
+          setTransfers(d.transfers ?? []);
+          setExtraTurnIdx(d.extraTurnIdx ?? 0);
+          setExtraSessions(d.extraSessions ?? []);
+        } else {
+          setSats(getSats(yr, mo));
+          setCompDays({});
+          setAttend({});
+          setTransfers([]);
+          setExtraSessions([]);
+          setExtraTurnIdx(0);
+        }
+      } catch {
+        setSats(getSats(yr, mo));
+      }
+      setLoaded(true);
+    })();
+  }, [yr, mo]);
+
+  const persist = (patch = {}) => {
+    const d = { sats, compDays, attend, transfers, extraTurnIdx, extraSessions, ...patch };
+    (() => { try { localStorage.setItem(mk, JSON.stringify(d)); } catch {} })();
+  };
+  const pm = (m) => (() => { try { localStorage.setItem("ag3-members", JSON.stringify(m)); } catch {} })();
+
+  // ── Calculations ──────────────────────────────────────────────
+  const trainingSats = sats.filter((s) => !compDays[s]);
+  const usedHours = trainingSats.length * HOURS_PER_SAT;
+  const extraHours = Math.max(0, TOTAL_HOURS - usedHours);
+
+  const getEffective = (mid, sat) => {
+    const t = transfers.find((x) => x.from === mid && x.sat === sat);
+    return t ? t.to : mid;
+  };
+
+  const getAttendees = (sat) => {
+    const ids = new Set();
+    members.forEach((m) => {
+      if (attend[`${m.id}-${sat}`]) ids.add(getEffective(m.id, sat));
+    });
+    return [...ids];
+  };
+
+  const calcCosts = () => {
+    const c = {};
+    members.forEach((m) => (c[m.id] = 0));
+    // Sábados de entrenamiento
+    trainingSats.forEach((sat) => {
+      const ats = getAttendees(sat);
+      if (!ats.length) return;
+      const cpp = (CPH * HOURS_PER_SAT) / ats.length;
+      ats.forEach((id) => { if (c[id] !== undefined) c[id] += cpp; });
+    });
+    // Horas extra: se dividen entre asistentes de cada sesión anunciada
+    if (extraHours > 0 && members[extraTurnIdx]) {
+      const turnId = members[extraTurnIdx].id;
+      if (extraSessions.length === 0) {
+        // Sin sesión anunciada: titular paga todo como garantía
+        if (c[turnId] !== undefined) c[turnId] += extraHours * CPH;
+      } else {
+        // Horas cubiertas por sesiones → dividir entre asistentes
+        extraSessions.forEach((sess) => {
+          const ats = sess.attendees.length > 0 ? sess.attendees : [turnId];
+          const cpp = (sess.hours * CPH) / ats.length;
+          ats.forEach((id) => { if (c[id] !== undefined) c[id] += cpp; });
+        });
+        // Horas extra aún sin sesión asignada → titular las carga
+        const hoursAssigned = extraSessions.reduce((a, s) => a + s.hours, 0);
+        const hoursUnassigned = Math.max(0, extraHours - hoursAssigned);
+        if (hoursUnassigned > 0 && c[turnId] !== undefined) {
+          c[turnId] += hoursUnassigned * CPH;
+        }
+      }
+    }
+    return c;
+  };
+
+  const costs = loaded ? calcCosts() : {};
+  const totalUsed = Object.values(costs).reduce((a, b) => a + b, 0);
+
+  // ── Actions ───────────────────────────────────────────────────
+  const toggleAttend = (mid, sat) => {
+    if (compDays[sat]) return;
+    if (!adminMode && myId && myId !== mid) return;
+    const key = `${mid}-${sat}`;
+    const prev = attend[key];
+    const next = { ...attend };
+    if (prev) delete next[key];
+    else next[key] = true;
+    setAttend(next);
+    persist({ attend: next });
+  };
+
+  const toggleComp = (sat) => {
+    const next = { ...compDays, [sat]: !compDays[sat] };
+    setCompDays(next);
+    persist({ compDays: next });
+  };
+
+  const addTransfer = () => {
+    if (!xFrom || !xTo || !xSat || xFrom === xTo) return;
+    const t = { id: Date.now().toString(), from: xFrom, to: xTo, sat: xSat };
+    const next = [...transfers, t];
+    setTransfers(next);
+    persist({ transfers: next });
+    setXFrom(""); setXTo(""); setXSat("");
+  };
+
+  const delTransfer = (id) => {
+    const next = transfers.filter((t) => t.id !== id);
+    setTransfers(next);
+    persist({ transfers: next });
+  };
+
+  const addMember = () => {
+    if (!newName.trim()) return;
+    const m = { id: `m${Date.now()}`, name: newName.trim() };
+    const next = [...members, m];
+    setMembers(next);
+    pm(next);
+    setNewName("");
+  };
+
+  const delMember = (id) => {
+    const next = members.filter((m) => m.id !== id);
+    setMembers(next);
+    pm(next);
+  };
+
+  const addExtraSession = () => {
+    if (!nsd || !nsh) return;
+    const turnId = members[extraTurnIdx]?.id;
+    const s = { id: Date.now().toString(), date: nsd, time: nst, hours: nsh, attendees: turnId ? [turnId] : [] };
+    const next = [...extraSessions, s];
+    setExtraSessions(next);
+    persist({ extraSessions: next });
+    setNsd(""); setNst(""); setNsh(1); setNsa([]);
+  };
+
+  const startEditing = (s) => {
+    setEditingSessionId(s.id);
+    setNsd(s.date);
+    setNst(s.time ?? "");
+    setNsh(s.hours);
+  };
+
+  const saveEditedSession = () => {
+    if (!nsd || !nsh) return;
+    const next = extraSessions.map((s) =>
+      s.id === editingSessionId ? { ...s, date: nsd, time: nst, hours: nsh } : s
+    );
+    setExtraSessions(next);
+    persist({ extraSessions: next });
+    setEditingSessionId(null);
+    setNsd(""); setNst(""); setNsh(1);
+  };
+
+  const cancelEditing = () => {
+    setEditingSessionId(null);
+    setNsd(""); setNst(""); setNsh(1);
+  };
+
+  const delSession = (id) => {
+    const next = extraSessions.filter((s) => s.id !== id);
+    setExtraSessions(next);
+    persist({ extraSessions: next });
+  };
+
+  const toggleExtraAttendance = (sessId, memberId) => {
+    const next = extraSessions.map((s) => {
+      if (s.id !== sessId) return s;
+      const already = s.attendees.includes(memberId);
+      return {
+        ...s,
+        attendees: already
+          ? s.attendees.filter((x) => x !== memberId)
+          : [...s.attendees, memberId],
+      };
+    });
+    setExtraSessions(next);
+    persist({ extraSessions: next });
+  };
+
+  const advanceTurn = () => {
+    const next = (extraTurnIdx + 1) % members.length;
+    setExtraTurnIdx(next);
+    persist({ extraTurnIdx: next });
+  };
+
+  const mn = (id) => members.find((m) => m.id === id)?.name ?? id;
+  const firstName = (id) => mn(id).split(" ")[0];
+
+  const waMsg = () => {
+    const paying = members
+      .filter((m) => costs[m.id] > 0)
+      .sort((a, b) => costs[b.id] - costs[a.id]);
+    return [
+      `🐕 *BAYARA — AGILITY*`,
+      `📅 ${monthStr(yr, mo).toUpperCase()}`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      ``,
+      `*💰 Cobro por integrante:*`,
+      ...paying.map((m) => `• ${m.name}: *${fmtCOP(costs[m.id])}*`),
+      ``,
+      `*📆 Sábados del mes:*`,
+      ...sats.map(
+        (s) =>
+          `${compDays[s] ? "🏆" : "✅"} ${shortDate(s)}: ${
+            compDays[s]
+              ? "Competencia (no entrena)"
+              : `${getAttendees(s).length} personas`
+          }`
+      ),
+      ``,
+      extraHours > 0
+        ? `*⏰ Horas extra (${extraHours}h):*\nTurno de: ${members[extraTurnIdx]?.name ?? "-"} (+${fmtCOP(extraHours * CPH)} incluido en su cobro)`
+        : null,
+      extraSessions.length > 0
+        ? `\n*Sesiones extra registradas:*\n` +
+          extraSessions
+            .map(
+              (s) =>
+                `• ${s.date} (${s.hours}h) — ${s.attendees.map(firstName).join(", ")}`
+            )
+            .join("\n")
+        : null,
+      ``,
+      `_Total pista: ${fmtCOP(TOTAL_COST)}_`,
+    ]
+      .filter((l) => l !== null)
+      .join("\n");
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(waMsg()).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const prevMonth = () => {
+    if (mo === 0) { setYr(yr - 1); setMo(11); } else setMo(mo - 1);
+  };
+  const nextMonth = () => {
+    if (mo === 11) { setYr(yr + 1); setMo(0); } else setMo(mo + 1);
+  };
+
+  const turnMember = members[extraTurnIdx] ?? members[0];
+  const isMyTurn = myId === turnMember?.id;
+
+  if (!loaded)
+    return (
+      <div
+        style={{
+          background: "#0d0b1a", minHeight: "100vh", display: "flex",
+          alignItems: "center", justifyContent: "center",
+          color: "#6a9a6e", fontFamily: "sans-serif", fontSize: 14,
+        }}
+      >
+        Cargando...
+      </div>
+    );
+
+  return (
+    <div className="af">
+      <style>{STYLES}</style>
+
+      {/* ════ HEADER ════ */}
+      <header className="af-hdr">
+        <div className="af-hdr-row">
+          <div className="af-hdr-left">
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <img
+                src={LOGO_IMG}
+                alt="Bayara logo"
+                style={{
+                  width: 48,
+                  height: 48,
+                  objectFit: "contain",
+                  filter: "invert(1) sepia(1) saturate(3) hue-rotate(200deg) brightness(1.1)",
+                  flexShrink: 0,
+                }}
+              />
+              <div>
+                <div className="af-logo">
+                  BAYARA<span> — AGILITY</span>
+                </div>
+                <div className="af-mo">{monthStr(yr, mo)}</div>
+              </div>
+            </div>
+          </div>
+          <div className="af-hdr-right">
+            <button
+              className={`af-admin-btn ${adminMode ? "on" : ""}`}
+              onClick={() => setAdminMode(!adminMode)}
+            >
+              {adminMode ? "⚙️ Admin ON" : "⚙️ Admin"}
+            </button>
+            {myId && !adminMode && (
+              <div className="af-myid-info">
+                <div
+                  className="af-av"
+                  style={{ background: aColor(myId), width: 18, height: 18, fontSize: 9 }}
+                >
+                  {initials(mn(myId))}
+                </div>
+                {firstName(myId)}
+                <button className="af-myid-change" onClick={() => setMyId(null)}>
+                  cambiar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ════ CONTENT ════ */}
+      <div className="af-con">
+
+        {/* ══════════════════ TAB: INICIO ══════════════════ */}
+        {tab === "inicio" && (
+          <div>
+            <div className="af-mon-nav">
+              <button className="af-mon-nav-btn" onClick={prevMonth}>‹</button>
+              <div className="af-mon-title">{monthStr(yr, mo)}</div>
+              <button className="af-mon-nav-btn" onClick={nextMonth}>›</button>
+            </div>
+
+            {/* Hero */}
+            <div className="af-hero">
+              <div className="af-hero-lb">Costo total del mes</div>
+              <div className="af-hero-v">{fmtCOP(TOTAL_COST)}</div>
+              <div className="af-hero-sub">
+                {trainingSats.length} sábados de entrenamiento · {extraHours}h
+                disponibles extra
+              </div>
+              <div className="af-prog">
+                <div
+                  className="af-prog-f"
+                  style={{
+                    width: `${Math.min(100, (totalUsed / TOTAL_COST) * 100)}%`,
+                  }}
+                />
+              </div>
+              <div className="af-prog-label">
+                {fmtCOP(totalUsed)} asignado de {fmtCOP(TOTAL_COST)}
+              </div>
+            </div>
+
+            {/* Sábados */}
+            <div className="af-card">
+              <div className="af-card-title">Sábados del mes</div>
+              {sats.map((s) => {
+                const isComp = !!compDays[s];
+                const ats = getAttendees(s);
+                return (
+                  <div key={s} className={`af-sat ${isComp ? "cp" : "tr"}`}>
+                    <div className="af-sat-date">{shortDate(s)}</div>
+                    <span className={`af-badge ${isComp ? "cp" : "tr"}`}>
+                      {isComp ? "🏆 Competencia" : "🐕 Entrenamiento"}
+                    </span>
+                    {!isComp && (
+                      <div className="af-sat-meta">
+                        {ats.length}/{members.length}
+                      </div>
+                    )}
+                    {adminMode && (
+                      <button
+                        className={`af-toggle ${isComp ? "off" : "on"}`}
+                        onClick={() => toggleComp(s)}
+                        title={
+                          isComp
+                            ? "Desmarcar competencia"
+                            : "Marcar como competencia"
+                        }
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              {!adminMode && (
+                <div className="af-note" style={{ marginTop: 8 }}>
+                  Activa modo Admin para marcar sábados de competencia.
+                </div>
+              )}
+            </div>
+
+            {/* Extra turn */}
+            {extraHours > 0 && (
+              <div className="af-turn">
+                <div className="af-turn-label">Turno de horas extra</div>
+                <div className="af-turn-hours">{extraHours}h disponibles</div>
+                <div className="af-turn-name">{turnMember?.name ?? "—"}</div>
+                <div className="af-turn-sub">
+                  Anuncia cuándo vas a usar las horas en "Horas+"
+                </div>
+              </div>
+            )}
+
+            {/* Resumen */}
+            <div className="af-card">
+              <div className="af-card-title">Resumen financiero</div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Costo por hora</span>
+                <span className="af-stat-v af-green">{fmtCOP(CPH)}</span>
+              </div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Costo por sábado (2h)</span>
+                <span className="af-stat-v af-green">
+                  {fmtCOP(CPH * HOURS_PER_SAT)}
+                </span>
+              </div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Horas de entrenamiento</span>
+                <span className="af-stat-v">
+                  {usedHours}h / {TOTAL_HOURS}h
+                </span>
+              </div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Traslados de turno activos</span>
+                <span className="af-stat-v">{transfers.length}</span>
+              </div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Sesiones extra registradas</span>
+                <span className="af-stat-v">{extraSessions.length}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════ TAB: CONFIRMAR ══════════════════ */}
+        {tab === "confirmar" && (
+          <div>
+            <div className="af-stitle">Confirmaciones</div>
+
+            {/* Profile picker when not admin and no myId */}
+            {!adminMode && !myId && (
+              <div className="af-card">
+                <div className="af-card-title">¿Quién eres?</div>
+                <div className="af-profiles">
+                  {members.map((m) => (
+                    <button
+                      key={m.id}
+                      className="af-prof-btn"
+                      onClick={() => setMyId(m.id)}
+                    >
+                      <div
+                        className="af-av"
+                        style={{
+                          background: aColor(m.id),
+                          width: 28,
+                          height: 28,
+                          fontSize: 11,
+                        }}
+                      >
+                        {initials(m.name)}
+                      </div>
+                      <span>{m.name.split(" ")[0]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Attendance grid */}
+            {(adminMode || myId) && (
+              <div>
+                {!adminMode && myId && (
+                  <div className="af-card" style={{ padding: "12px 16px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div
+                        className="af-av"
+                        style={{
+                          background: aColor(myId),
+                          width: 36,
+                          height: 36,
+                          fontSize: 14,
+                        }}
+                      >
+                        {initials(mn(myId))}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>
+                          {mn(myId)}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#6a9a6e" }}>
+                          Toca los casilleros para confirmar
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Column headers */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    padding: "0 12px",
+                    marginBottom: 8,
+                    alignItems: "flex-end",
+                  }}
+                >
+                  <div style={{ flex: 1 }} />
+                  <div style={{ display: "flex", gap: 5 }}>
+                    {sats.map((s) => (
+                      <div
+                        key={s}
+                        className="af-col-hdr"
+                        style={{
+                          width: 32,
+                          color: compDays[s] ? "#ff6b47" : "#6a9a6e",
+                        }}
+                      >
+                        {shortDate(s)
+                          .split(" ")
+                          .map((p, i) => (
+                            <div key={i}>{p}</div>
+                          ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rows */}
+                {(adminMode
+                  ? members
+                  : members.filter((m) => m.id === myId)
+                ).map((m) => (
+                  <div key={m.id} className="af-mrow">
+                    {adminMode && (
+                      <>
+                        <div
+                          className="af-av"
+                          style={{
+                            background: aColor(m.id),
+                            width: 32,
+                            height: 32,
+                            fontSize: 12,
+                          }}
+                        >
+                          {initials(m.name)}
+                        </div>
+                        <div className="af-mname">{m.name.split(" ")[0]}</div>
+                      </>
+                    )}
+                    {!adminMode && (
+                      <div className="af-mname" style={{ fontSize: 13 }}>
+                        Mis sábados
+                      </div>
+                    )}
+                    <div className="af-checks">
+                      {sats.map((s) => {
+                        const isComp = !!compDays[s];
+                        const checked = !!attend[`${m.id}-${s}`];
+                        const xfer = transfers.find(
+                          (t) => t.from === m.id && t.sat === s
+                        );
+                        const canToggle = adminMode || m.id === myId;
+                        return (
+                          <button
+                            key={s}
+                            className={`af-chk ${isComp ? "cp" : ""} ${
+                              !isComp && checked && !xfer ? "y" : ""
+                            } ${!isComp && checked && xfer ? "xfrd" : ""} ${
+                              !isComp && !canToggle ? "locked" : ""
+                            }`}
+                            onClick={() =>
+                              canToggle && !isComp && toggleAttend(m.id, s)
+                            }
+                            title={
+                              isComp
+                                ? "Competencia"
+                                : xfer && checked
+                                ? `Cedido a ${firstName(xfer.to)}`
+                                : ""
+                            }
+                          >
+                            {isComp ? "🏆" : xfer && checked ? "↪" : checked ? "✓" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Legend */}
+                <div className="af-legend">
+                  <div className="af-legend-item">
+                    <div
+                      style={{
+                        width: 16,
+                        height: 16,
+                        background: "#b0ef28",
+                        borderRadius: 4,
+                      }}
+                    />
+                    Confirmado
+                  </div>
+                  <div className="af-legend-item">
+                    <span>↪</span> Cedido
+                  </div>
+                  <div className="af-legend-item">
+                    <span>🏆</span> Competencia
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════ TAB: TURNOS ══════════════════ */}
+        {tab === "turnos" && (
+          <div>
+            <div className="af-stitle">Mercado de Turnos</div>
+
+            <div className="af-card">
+              <div className="af-card-title">¿Cómo funciona?</div>
+              <p className="af-note">
+                Si confirmaste un sábado pero no puedes ir, cede tu turno a
+                otro integrante. El costo se transfiere automáticamente a quien
+                ocupa tu lugar.
+              </p>
+            </div>
+
+            {/* Existing transfers */}
+            {transfers.length > 0 && (
+              <div className="af-card">
+                <div className="af-card-title">
+                  Traslados activos — {transfers.length}
+                </div>
+                {transfers.map((t) => (
+                  <div key={t.id} className="af-xfer">
+                    <div
+                      className="af-av"
+                      style={{
+                        background: aColor(t.from),
+                        width: 26,
+                        height: 26,
+                        fontSize: 10,
+                      }}
+                    >
+                      {initials(mn(t.from))}
+                    </div>
+                    <span style={{ fontSize: 13 }}>{firstName(t.from)}</span>
+                    <span className="af-xfer-arr">→</span>
+                    <div
+                      className="af-av"
+                      style={{
+                        background: aColor(t.to),
+                        width: 26,
+                        height: 26,
+                        fontSize: 10,
+                      }}
+                    >
+                      {initials(mn(t.to))}
+                    </div>
+                    <span style={{ fontSize: 13 }}>{firstName(t.to)}</span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "#6a9a6e",
+                        marginLeft: 4,
+                      }}
+                    >
+                      {shortDate(t.sat)}
+                    </span>
+                    {(adminMode || t.from === myId) && (
+                      <button
+                        className="af-del-btn"
+                        onClick={() => delTransfer(t.id)}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add transfer form */}
+            {(adminMode || myId) ? (
+              <div className="af-card">
+                <div className="af-card-title">Registrar traslado</div>
+
+                <div
+                  className="af-note af-mb12"
+                  style={{ color: "#6a9a6e" }}
+                >
+                  ¿Quién cede su turno?
+                </div>
+                <select
+                  className="af-inp af-mb8"
+                  value={xFrom}
+                  onChange={(e) => setXFrom(e.target.value)}
+                >
+                  <option value="">Seleccionar...</option>
+                  {members
+                    .filter((m) => adminMode || m.id === myId)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+
+                <div className="af-note af-mb8" style={{ color: "#6a9a6e" }}>
+                  ¿Qué sábado?
+                </div>
+                <select
+                  className="af-inp af-mb8"
+                  value={xSat}
+                  onChange={(e) => setXSat(e.target.value)}
+                >
+                  <option value="">Seleccionar sábado...</option>
+                  {sats
+                    .filter((s) => !compDays[s])
+                    .map((s) => (
+                      <option key={s} value={s}>
+                        {shortDate(s)}
+                      </option>
+                    ))}
+                </select>
+
+                <div className="af-note af-mb8" style={{ color: "#6a9a6e" }}>
+                  ¿A quién le cede el turno?
+                </div>
+                <select
+                  className="af-inp af-mb12"
+                  value={xTo}
+                  onChange={(e) => setXTo(e.target.value)}
+                >
+                  <option value="">Seleccionar...</option>
+                  {members
+                    .filter((m) => m.id !== xFrom)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+
+                <button
+                  className="af-btn af-btn-p"
+                  onClick={addTransfer}
+                  disabled={!xFrom || !xTo || !xSat}
+                >
+                  ↪ Registrar traslado
+                </button>
+              </div>
+            ) : (
+              <div className="af-card">
+                <div className="af-empty">
+                  Selecciona tu perfil en "Confirmar" para registrar un
+                  traslado, o activa modo Admin.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+
+
+        {/* ══════════════════ TAB: HORAS+ ══════════════════ */}
+        {tab === "extra" && (
+          <div>
+            <div className="af-stitle">Horas Extra</div>
+
+            {/* Turn card */}
+            <div className="af-turn">
+              <div className="af-turn-label">Turno este mes</div>
+              <div className="af-turn-name">{turnMember?.name ?? "—"}</div>
+              <div className="af-turn-sub">{extraHours}h disponibles para usar entre semana</div>
+              {extraHours > 0 && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "#9a7abf" }}>
+                  {extraSessions.length === 0
+                    ? <>Carga <span style={{ color: "#1F94CC", fontWeight: 700 }}>{fmtCOP(extraHours * CPH)}</span> hasta que anuncie sesión</>
+                    : <>Costo final se divide entre asistentes confirmados</>
+                  }
+                </div>
+              )}
+              {adminMode && (
+                <button
+                  className="af-btn af-btn-s"
+                  style={{ marginTop: 14, maxWidth: 220, margin: "14px auto 0" }}
+                  onClick={advanceTurn}
+                >
+                  ↻ Pasar turno al siguiente
+                </button>
+              )}
+            </div>
+
+            {/* Stats */}
+            <div className="af-card">
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Horas contratadas</span>
+                <span className="af-stat-v">{TOTAL_HOURS}h</span>
+              </div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Horas de sábados</span>
+                <span className="af-stat-v">{usedHours}h</span>
+              </div>
+              <div className="af-stat-row">
+                <span className="af-stat-lb">Horas extra disponibles</span>
+                <span className="af-stat-v af-green">{extraHours}h</span>
+              </div>
+            </div>
+
+            {/* Announced sessions — visible to everyone */}
+            {extraSessions.length > 0 && (
+              <div className="af-card">
+                <div className="af-card-title">Sesiones anunciadas</div>
+                {extraSessions.map((s) => {
+                  const iJoined = myId && s.attendees.includes(myId);
+                  const canToggle = myId && !adminMode;
+                  const canEdit = adminMode || (myId === turnMember?.id);
+                  const isEditing = editingSessionId === s.id;
+                  return (
+                    <div key={s.id} className="af-sess" style={{ marginBottom: 12 }}>
+
+                      {/* View mode */}
+                      {!isEditing && (
+                        <>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div style={{ flex: 1 }}>
+                              <div className="af-sess-date">📅 {s.date}{s.time ? ` · 🕐 ${s.time}` : ""} — {s.hours}h</div>
+                              <div className="af-sess-meta" style={{ marginTop: 6 }}>
+                                <span style={{ color: "#8a6aaa" }}>Van ({s.attendees.length}): </span>
+                                {s.attendees.length > 0
+                                  ? s.attendees.map((id) => (
+                                      <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 4, marginRight: 6 }}>
+                                        <span style={{
+                                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                          width: 20, height: 20, borderRadius: "50%",
+                                          background: aColor(id), fontSize: 9, fontWeight: 800, color: "#fff"
+                                        }}>{initials(mn(id))}</span>
+                                        <span style={{ fontSize: 12 }}>{firstName(id)}</span>
+                                      </span>
+                                    ))
+                                  : <span style={{ color: "#4a2e6a" }}>nadie aún</span>
+                                }
+                              </div>
+                              {s.attendees.length > 0 && (
+                                <div className="af-sess-meta" style={{ marginTop: 4 }}>
+                                  Costo por persona:{" "}
+                                  <span style={{ color: "#1F94CC", fontWeight: 700 }}>
+                                    {fmtCOP((s.hours * CPH) / s.attendees.length)}
+                                  </span>
+                                  <span style={{ color: "#4a2e6a" }}> · Total sesión: {fmtCOP(s.hours * CPH)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action buttons row */}
+                          <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                            {canToggle && (
+                              <button
+                                className={`af-btn ${iJoined ? "af-btn-d" : "af-btn-p"}`}
+                                style={{ fontSize: 12, padding: "7px 12px", width: "auto", flex: 1 }}
+                                onClick={() => toggleExtraAttendance(s.id, myId)}
+                              >
+                                {iJoined ? "✕ No puedo" : "✓ Me apunto"}
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                className="af-btn af-btn-s"
+                                style={{ fontSize: 12, padding: "7px 12px", width: "auto", flex: "0 0 auto" }}
+                                onClick={() => startEditing(s)}
+                              >
+                                ✏️
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                className="af-btn af-btn-d"
+                                style={{ fontSize: 12, padding: "7px 12px", width: "auto", flex: "0 0 auto" }}
+                                onClick={() => delSession(s.id)}
+                              >
+                                🗑
+                              </button>
+                            )}
+                          </div>
+                          {!myId && !adminMode && (
+                            <div style={{ fontSize: 12, color: "#6a4a8a", marginTop: 8 }}>
+                              Selecciona tu perfil en "Confirmar" para apuntarte
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Edit mode */}
+                      {isEditing && (
+                        <>
+                          <div className="af-card-title" style={{ marginBottom: 10 }}>✏️ Editando sesión</div>
+                          <div className="af-note af-mb8" style={{ color: "#8a6aaa" }}>Fecha</div>
+                          <input type="date" className="af-inp af-mb8" value={nsd} onChange={(e) => setNsd(e.target.value)} />
+                          <div className="af-note af-mb8" style={{ color: "#8a6aaa" }}>Hora de inicio</div>
+                          <input type="time" className="af-inp af-mb8" value={nst} onChange={(e) => setNst(e.target.value)} />
+                          <div className="af-note af-mb8" style={{ color: "#8a6aaa" }}>Horas a usar</div>
+                          <select className="af-inp af-mb12" value={nsh} onChange={(e) => setNsh(Number(e.target.value))}>
+                            {Array.from({ length: extraHours }, (_, i) => i + 1).map((h) => (
+                              <option key={h} value={h}>{h} hora{h > 1 ? "s" : ""}</option>
+                            ))}
+                          </select>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="af-btn af-btn-p" style={{ fontSize: 12, padding: "8px 14px" }} onClick={saveEditedSession}>
+                              ✓ Guardar
+                            </button>
+                            <button className="af-btn af-btn-s" style={{ fontSize: 12, padding: "8px 14px", width: "auto", flex: "0 0 auto" }} onClick={cancelEditing}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </>
+                      )}
+
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Announce form — only turn holder */}
+            {extraHours === 0 ? (
+              <div className="af-card">
+                <div className="af-empty">Todas las horas están cubiertas por los sábados este mes.</div>
+              </div>
+            ) : (adminMode || isMyTurn) ? (
+              <div className="af-card">
+                <div className="af-card-title">
+                  {isMyTurn && !adminMode ? "🎯 Es tu turno — anuncia la sesión" : "Anunciar sesión"}
+                </div>
+                <p className="af-note af-mb12">
+                  Elige fecha y horas. El resto del equipo podrá apuntarse desde sus perfiles.
+                </p>
+                <div className="af-note af-mb8" style={{ color: "#8a6aaa" }}>Fecha</div>
+                <input
+                  type="date"
+                  className="af-inp af-mb8"
+                  value={nsd}
+                  onChange={(e) => setNsd(e.target.value)}
+                />
+                <div className="af-note af-mb8" style={{ color: "#8a6aaa" }}>Hora de inicio</div>
+                <input
+                  type="time"
+                  className="af-inp af-mb8"
+                  value={nst}
+                  onChange={(e) => setNst(e.target.value)}
+                />
+                <div className="af-note af-mb8" style={{ color: "#8a6aaa" }}>Horas a usar</div>
+                <select
+                  className="af-inp af-mb12"
+                  value={nsh}
+                  onChange={(e) => setNsh(Number(e.target.value))}
+                >
+                  {Array.from({ length: extraHours }, (_, i) => i + 1).map((h) => (
+                    <option key={h} value={h}>{h} hora{h > 1 ? "s" : ""}</option>
+                  ))}
+                </select>
+                <button
+                  className="af-btn af-btn-p"
+                  onClick={addExtraSession}
+                  disabled={!nsd}
+                >
+                  📢 Anunciar sesión al equipo
+                </button>
+              </div>
+            ) : (
+              <div className="af-card">
+                <div className="af-empty">
+                  <strong style={{ color: "#1F94CC" }}>{turnMember?.name}</strong> aún no ha anunciado la sesión.{" "}
+                  {!myId ? "Selecciona tu perfil para apuntarte cuando la anuncie." : "Te avisaremos aquí cuando esté disponible."}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════ TAB: PAGOS ══════════════════ */}
+        {tab === "pagos" && (
+          <div>
+            <div className="af-stitle">Pagos</div>
+
+            {/* Cost per member */}
+            <div className="af-card">
+              <div className="af-card-title">Lo que debe cada integrante</div>
+              {members.filter((m) => costs[m.id] > 0).length === 0 ? (
+                <div className="af-empty">
+                  Aún no hay asistencias confirmadas
+                </div>
+              ) : (
+                [...members]
+                  .sort((a, b) => costs[b.id] - costs[a.id])
+                  .map((m) => (
+                    <div key={m.id} className="af-cost-row">
+                      <div className="af-cost-info">
+                        <div
+                          className="af-av"
+                          style={{
+                            background: aColor(m.id),
+                            width: 30,
+                            height: 30,
+                            fontSize: 12,
+                          }}
+                        >
+                          {initials(m.name)}
+                        </div>
+                        <span style={{ fontSize: 14 }}>{m.name}</span>
+                      </div>
+                      <span
+                        className={`af-cost-v ${costs[m.id] === 0 ? "z" : ""}`}
+                      >
+                        {costs[m.id] > 0 ? fmtCOP(costs[m.id]) : "—"}
+                      </span>
+                    </div>
+                  ))
+              )}
+              <div className="af-divider" />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "#6a9a6e",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Total asignado
+                </span>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 800,
+                    color:
+                      totalUsed > TOTAL_COST + 100 ? "#ff6b47" : "#b0ef28",
+                  }}
+                >
+                  {fmtCOP(totalUsed)}
+                </span>
+              </div>
+              {Math.abs(TOTAL_COST - totalUsed) > 500 && (
+                <div className="af-alert af-alert-warn">
+                  ⚠️ Diferencia de {fmtCOP(Math.abs(TOTAL_COST - totalUsed))} — hay
+                  sábados sin asistentes confirmados o horas extra sin asignar.
+                </div>
+              )}
+            </div>
+
+            {/* WhatsApp export */}
+            <div className="af-card">
+              <div className="af-card-title">Mensaje para WhatsApp</div>
+              <div className="af-wa">{waMsg()}</div>
+              <button className="af-btn af-btn-p" onClick={handleCopy}>
+                {copied ? "✅ ¡Copiado en portapapeles!" : "📋 Copiar para WhatsApp"}
+              </button>
+            </div>
+
+            {/* Admin: manage members */}
+            {adminMode && (
+              <div className="af-card">
+                <div className="af-card-title">Gestionar integrantes</div>
+                <div className="af-row af-mb12">
+                  <input
+                    className="af-inp"
+                    style={{ marginBottom: 0 }}
+                    placeholder="Nombre del nuevo integrante"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addMember()}
+                  />
+                  <button
+                    className="af-btn af-btn-p"
+                    style={{ width: "auto", padding: "0 18px", flexShrink: 0, flex: 0 }}
+                    onClick={addMember}
+                  >
+                    +
+                  </button>
+                </div>
+                {members.map((m) => (
+                  <div key={m.id} className="af-mrow">
+                    <div
+                      className="af-av"
+                      style={{
+                        background: aColor(m.id),
+                        width: 32,
+                        height: 32,
+                        fontSize: 12,
+                      }}
+                    >
+                      {initials(m.name)}
+                    </div>
+                    <div className="af-mname">{m.name}</div>
+                    <button
+                      className="af-del-btn"
+                      onClick={() => delMember(m.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ════ TAB BAR ════ */}
+      <nav className="af-tabs">
+        {[
+          { id: "inicio", icon: "🏠", label: "Inicio" },
+          { id: "confirmar", icon: "✅", label: "Confirmar" },
+          { id: "turnos", icon: "🔄", label: "Turnos" },
+          { id: "extra", icon: "⏰", label: "Horas+" },
+          { id: "pagos", icon: "💰", label: "Pagos" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            className={`af-tab ${tab === t.id ? "act" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            <span className="af-tab-ic">{t.icon}</span>
+            <span className="af-tab-lb">{t.label}</span>
+            <span className="af-tab-dot" />
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
